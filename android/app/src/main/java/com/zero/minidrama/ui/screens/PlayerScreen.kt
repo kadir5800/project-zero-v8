@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -24,50 +25,43 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
+import com.zero.minidrama.core.VideoPlayback
 import com.zero.minidrama.data.PlayPayload
 
+@UnstableApi
 @Composable
 fun PlayerScreen(
     payload: PlayPayload?,
     playUrl: String?,
     isLoading: Boolean,
+    loadError: String?,
     onBack: () -> Unit,
     onEnded: () -> Unit,
     onError: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
-    val player = remember {
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(
-                "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36"
-            )
-            .setAllowCrossProtocolRedirects(true)
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
-            .build()
-            .apply { playWhenReady = true }
+    val platform = payload?.platform.orEmpty()
+    val player = remember(platform) {
+        VideoPlayback.createPlayer(context, platform)
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) onEnded()
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                onError(error.message ?: "Oynatma hatasi")
+                val msg = error.cause?.message ?: error.message ?: "Oynatma hatasi"
+                onError(msg)
             }
         }
         player.addListener(listener)
@@ -81,23 +75,20 @@ fun PlayerScreen(
         if (!playUrl.isNullOrBlank()) {
             player.stop()
             player.clearMediaItems()
-            player.setMediaItem(MediaItem.fromUri(playUrl))
+            player.setMediaItem(VideoPlayback.mediaItemForUrl(playUrl))
             player.prepare()
             player.play()
         }
     }
+
+    val failedToLoad = !isLoading && playUrl.isNullOrBlank()
 
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        if (isLoading || playUrl.isNullOrBlank()) {
-            CircularProgressIndicator(
-                Modifier.align(Alignment.Center),
-                color = MaterialTheme.colorScheme.primary
-            )
-        } else {
+        if (!playUrl.isNullOrBlank()) {
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
@@ -113,6 +104,31 @@ fun PlayerScreen(
                 update = { view -> view.player = player },
                 modifier = Modifier.fillMaxSize()
             )
+        }
+
+        if (isLoading) {
+            CircularProgressIndicator(
+                Modifier.align(Alignment.Center),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        if (failedToLoad) {
+            Column(
+                Modifier
+                    .align(Alignment.Center)
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    loadError ?: "Video acilamadi",
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+                Button(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) {
+                    Text("Geri")
+                }
+            }
         }
 
         Box(

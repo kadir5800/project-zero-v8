@@ -1,6 +1,7 @@
 package com.zero.minidrama.core
 
 import android.content.Context
+import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -139,7 +140,7 @@ class ReelShortClient {
             val m3u8 = fetchAndRewriteManifest(manifestUrl)
             val file = File(context.cacheDir, "reelshort_${bookId}_${serial}.m3u8")
             file.writeText(m3u8)
-            return file.toURI().toString()
+            return Uri.fromFile(file).toString()
         }
         return manifestUrl
     }
@@ -156,6 +157,8 @@ class ReelShortClient {
         val req = Request.Builder()
             .url(videoUrl)
             .header("User-Agent", "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36")
+            .header("Referer", "https://www.reelshort.com/")
+            .header("Origin", "https://www.reelshort.com")
             .build()
         val text = HttpClient.client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw IllegalStateException("Manifest HTTP ${resp.code}")

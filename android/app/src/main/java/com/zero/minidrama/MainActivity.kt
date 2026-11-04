@@ -106,7 +106,11 @@ private fun ZeroApp(vm: AppViewModel = viewModel()) {
     BackHandler { navigateBack() }
 
     LaunchedEffect(state.playPayload) {
-        if (state.playPayload != null) route = AppRoute.Player
+        if (state.playPayload != null) {
+            route = AppRoute.Player
+        } else if (route == AppRoute.Player) {
+            route = if (state.bookDetail != null) AppRoute.Detail else AppRoute.Main
+        }
     }
 
     Scaffold(
@@ -161,6 +165,7 @@ private fun ZeroApp(vm: AppViewModel = viewModel()) {
                         payload = state.playPayload,
                         playUrl = state.playUrl,
                         isLoading = state.isLoadingPlay,
+                        loadError = state.error,
                         onBack = { navigateBack() },
                         onError = { msg -> vm.reportPlayError(msg) },
                         onEnded = {

@@ -1,6 +1,7 @@
 package com.zero.minidrama.data
 
 import android.content.Context
+import android.net.Uri
 import com.zero.minidrama.core.DramaBoxClient
 import com.zero.minidrama.core.DramaWaveClient
 import com.zero.minidrama.core.NetShortClient
@@ -232,7 +233,7 @@ class ZeroRepository(private val context: Context) {
                 val m3u8 = dramaBox.generateM3u8(cover)
                 val file = File(context.cacheDir, "dramabox_${payload.bookId}_${payload.serial}.m3u8")
                 file.writeText(m3u8)
-                file.toURI().toString()
+                Uri.fromFile(file).toString()
             }
             "dramawave" -> dramaWave.episodeVideo(payload.bookId, payload.chapterId, payload.lang)
             else -> throw IllegalStateException("Platform desteklenmiyor")
