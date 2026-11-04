@@ -225,7 +225,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoadingPlay = false,
-                    playPayload = null,
                     playUrl = null,
                     error = e.message ?: "Video acilamadi"
                 )

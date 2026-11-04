@@ -113,6 +113,21 @@ private fun ZeroApp(vm: AppViewModel = viewModel()) {
         }
     }
 
+    fun playNextEpisode() {
+        val detail = state.bookDetail ?: return
+        val current = state.playPayload?.serial ?: return
+        val next = detail.episodes.find { it.serial == current + 1 } ?: return
+        vm.playEpisode(
+            bookId = detail.bookId,
+            bookName = detail.bookName,
+            pic = state.selectedBookPic,
+            serial = next.serial,
+            chapterId = next.chapterId,
+            cover = next.cover,
+            isLock = next.isLock
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
@@ -168,20 +183,8 @@ private fun ZeroApp(vm: AppViewModel = viewModel()) {
                         loadError = state.error,
                         onBack = { navigateBack() },
                         onError = { msg -> vm.reportPlayError(msg) },
-                        onEnded = {
-                            val detail = state.bookDetail ?: return@PlayerScreen
-                            val current = state.playPayload?.serial ?: return@PlayerScreen
-                            val next = detail.episodes.find { it.serial == current + 1 } ?: return@PlayerScreen
-                            vm.playEpisode(
-                                bookId = detail.bookId,
-                                bookName = detail.bookName,
-                                pic = state.selectedBookPic,
-                                serial = next.serial,
-                                chapterId = next.chapterId,
-                                cover = next.cover,
-                                isLock = next.isLock
-                            )
-                        }
+                        onEnded = { playNextEpisode() },
+                        onSwipeNext = { playNextEpisode() }
                     )
                     AppRoute.Detail -> DetailScreen(
                         detail = state.bookDetail,

@@ -117,7 +117,8 @@ class ZeroRepository(private val context: Context) {
                             pic = b.optString("book_pic"),
                             desc = b.optString("special_desc", b.optString("share_text")),
                             chapterCount = b.optInt("chapter_count"),
-                            firstChapterId = b.optString("first_chapter_id")
+                            firstChapterId = b.optString("first_chapter_id"),
+                            firstEpId = b.optString("first_chapter_id")
                         )
                     }
                     SearchResponse(
@@ -207,7 +208,7 @@ class ZeroRepository(private val context: Context) {
                         tags = jsonArrayToStringList(data.optJSONArray("tags")),
                         episodes = jsonArrayToEpisodes(data.optJSONArray("episodes")) { e ->
                             EpisodeDto(
-                                serial = e.optInt("serial"),
+                                serial = episodeSerial(e),
                                 chapterId = e.optString("chapter_id")
                             )
                         }
@@ -260,6 +261,14 @@ class ZeroRepository(private val context: Context) {
 
     private fun stripHl(text: String): String =
         text.replace(Regex("</?em>", RegexOption.IGNORE_CASE), "").trim()
+
+    private fun episodeSerial(e: JSONObject): Int {
+        when (val raw = e.opt("serial")) {
+            is Number -> return raw.toInt()
+            is String -> return raw.toIntOrNull() ?: 0
+        }
+        return e.optInt("serial", 0)
+    }
 
     private suspend fun <T> withNetShort(lang: String, block: () -> T): T {
         netShort.ensureLogin(lang)

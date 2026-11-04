@@ -2,6 +2,7 @@ package com.zero.minidrama.ui.screens
 
 import android.view.ViewGroup
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,8 +20,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -35,6 +38,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.zero.minidrama.core.VideoPlayback
 import com.zero.minidrama.data.PlayPayload
+import java.util.concurrent.atomic.AtomicLong
 
 @UnstableApi
 @Composable
@@ -45,10 +49,12 @@ fun PlayerScreen(
     loadError: String?,
     onBack: () -> Unit,
     onEnded: () -> Unit,
+    onSwipeNext: () -> Unit = onEnded,
     onError: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val platform = payload?.platform.orEmpty()
+    val swipeGate = remember { AtomicLong(0L) }
     val player = remember(platform) {
         VideoPlayback.createPlayer(context, platform)
     }
@@ -71,7 +77,7 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(playUrl) {
+    LaunchedEffect(playUrl, payload?.serial, payload?.chapterId) {
         if (!playUrl.isNullOrBlank()) {
             player.stop()
             player.clearMediaItems()
@@ -81,12 +87,23 @@ fun PlayerScreen(
         }
     }
 
+    val swipeModifier = Modifier.pointerInput(payload?.serial, payload?.chapterId) {
+        detectVerticalDragGestures { _, dragAmount ->
+            if (dragAmount >= -60f) return@detectVerticalDragGestures
+            val now = System.currentTimeMillis()
+            if (now - swipeGate.get() < 900) return@detectVerticalDragGestures
+            swipeGate.set(now)
+            onSwipeNext()
+        }
+    }
+
     val failedToLoad = !isLoading && playUrl.isNullOrBlank()
 
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .then(swipeModifier)
     ) {
         if (!playUrl.isNullOrBlank()) {
             AndroidView(
@@ -159,7 +176,7 @@ fun PlayerScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        "Bolum ${it.serial}",
+                        "Bolum ${it.serial} · Yukari kaydir: sonraki",
                         color = Color.White.copy(alpha = 0.75f),
                         style = MaterialTheme.typography.labelMedium
                     )
