@@ -51,7 +51,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }.stateIn(viewModelScope, SharingStarted.Eagerly, AppUiState())
 
     init {
-        browseCatalog()
+        viewModelScope.launch {
+            prefs.restoreFromBackupIfEmpty()
+            browseCatalog()
+        }
     }
 
     fun setQuery(q: String) {
@@ -208,20 +211,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val s = state.value
             val payload = PlayPayload(bookId, bookName, pic, s.platform, s.lang, serial, chapterId, cover, isLock)
             _state.value = s.copy(playPayload = payload, playUrl = null, isLoadingPlay = true, error = null)
+            prefs.addHistory(
+                HistoryItem(
+                    bookId = bookId,
+                    title = bookName,
+                    pic = pic,
+                    platform = s.platform,
+                    lang = s.lang,
+                    serial = serial,
+                    firstEpId = chapterId
+                )
+            )
             try {
                 val url = repo.resolvePlayUrl(payload)
                 _state.value = _state.value.copy(playUrl = url, isLoadingPlay = false)
-                prefs.addHistory(
-                    HistoryItem(
-                        bookId = bookId,
-                        title = bookName,
-                        pic = pic,
-                        platform = s.platform,
-                        lang = s.lang,
-                        serial = serial,
-                        firstEpId = chapterId
-                    )
-                )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoadingPlay = false,
@@ -250,5 +253,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearHistory() {
         viewModelScope.launch { prefs.clearHistory() }
+    }
+
+    fun restoreHistoryFromBackup(force: Boolean = true, onResult: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            val count = prefs.restoreFromBackup(force)
+            onResult(count)
+        }
     }
 }

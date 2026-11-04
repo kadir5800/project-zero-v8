@@ -14,6 +14,7 @@ import java.net.URLEncoder
 
 class ReelShortClient {
     private val slugCache = mutableMapOf<String, String>()
+    private val mobileClients = mutableMapOf<Context, ReelShortMobileClient>()
 
     companion object {
         private const val TAG = "ReelShortClient"
@@ -89,13 +90,20 @@ class ReelShortClient {
                     if (serial <= 0 || ch.optString("serial_number") == "Trailer") continue
                     val cid = ch.optString("chapter_id")
                     if (cid.isBlank()) continue
+                    val hasPlayInfo = ch.optString("play_info").isNotBlank()
+                    val cover = ch.optString("video_pic")
+                        .ifBlank { ch.optString("chapter_cover") }
+                        .ifBlank { ch.optString("book_pic") }
+                        .ifBlank { data1.optString("book_pic") }
                     add(JSONObject().apply {
                         put("serial", serial)
                         put("chapter_id", cid)
+                        put("isLock", !hasPlayInfo)
+                        put("cover", cover)
                     })
                 }
             }
-        }.distinctBy { it.optInt("serial") }.sortedBy { it.optInt("serial") }
+        }.distinctBy { it.optString("chapter_id") }.sortedBy { it.optInt("serial") }
 
         JSONObject().apply {
             put("bookId", bookId)
@@ -109,17 +117,52 @@ class ReelShortClient {
         }
     }
 
-    fun playUrl(context: Context, bookId: String, serial: Int, chapterId: String, lang: String): String {
+    fun playUrl(
+        context: Context,
+        bookId: String,
+        serial: Int,
+        chapterId: String,
+        lang: String,
+        isLock: Boolean = false
+    ): String {
         val resolvedChapterId = resolveChapterId(bookId, serial, chapterId, lang)
         if (resolvedChapterId.isBlank()) {
             throw IllegalStateException("Bolum ID bulunamadi (bolum $serial)")
         }
 
         var lastApiError = "bilinmiyor"
-        val videoUrl = fetchChapterVideoUrl(bookId, resolvedChapterId, lang) { lastApiError = it }
+        val videoUrl = fetchChapterVideoUrl(bookId, resolvedChapterId, serial, lang) { lastApiError = it }
             ?: fetchEpisodePageVideoUrl(bookId, serial, resolvedChapterId, lang)
-            ?: throw IllegalStateException("Video URL bulunamadi ($lastApiError)")
 
+        if (videoUrl.isNullOrBlank()) {
+            val locked = isLock || isChapterLockedOnServer(bookId, resolvedChapterId, lang)
+            if (locked) {
+                val mobileUrl = runCatching {
+                    mobileClient(context).playUrl(bookId, resolvedChapterId, lang)
+                }.onFailure { e ->
+                    Log.w(TAG, "mobile play failed: ${e.message}")
+                }.getOrNull()
+                if (!mobileUrl.isNullOrBlank()) {
+                    Log.i(TAG, "mobile API OK b=$bookId s=$serial")
+                    return finalizeUrl(context, bookId, serial, mobileUrl)
+                }
+                val detail = ReelShortMobileClient.lastDiagnostic.ifBlank { "mobil API yanit vermedi" }
+                throw IllegalStateException(
+                    "Bolum $serial ReelShort tarafinda kilitli; sunucu video adresi vermiyor. ($detail)"
+                )
+            }
+            throw IllegalStateException("Video URL bulunamadi ($lastApiError)")
+        }
+
+        return finalizeUrl(context, bookId, serial, videoUrl)
+    }
+
+    private fun mobileClient(context: Context): ReelShortMobileClient =
+        mobileClients.getOrPut(context.applicationContext) {
+            ReelShortMobileClient(context.applicationContext)
+        }
+
+    private fun finalizeUrl(context: Context, bookId: String, serial: Int, videoUrl: String): String {
         val manifestUrl = transformVideoUrl(videoUrl)
         if (manifestUrl.startsWith("http")) {
             return manifestUrl
@@ -159,9 +202,46 @@ class ReelShortClient {
         return data.optJSONObject("first_chapter")?.optString("chapter_id").orEmpty()
     }
 
+    private fun isChapterLockedOnServer(bookId: String, chapterId: String, lang: String): Boolean {
+        if (chapterId.isBlank()) return false
+        val url =
+            "https://www.reelshort.com/api/video/book/getFreeChapter?book_id=$bookId&chapter_id=$chapterId"
+        val req = chapterApiRequest(url, lang)
+        return runCatching {
+            HttpClient.client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return false
+                val data = JSONObject(resp.body?.string().orEmpty()).optJSONObject("data") ?: return false
+                data.optString("err_msg").isNotBlank() && data.optString("video_url").isBlank()
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun bookSlug(bookId: String, lang: String): String {
+        slugCache["${bookId}_$lang"]?.let { return it }
+        val prefix = HtmlUtils.langPrefix(lang)
+        val firstUrl = "https://www.reelshort.com$prefix/full-episodes/$bookId/1"
+        val bookName = HtmlUtils.fetchNextData(firstUrl, lang).getJSONObject("props").getJSONObject("pageProps")
+            .getJSONObject("data").optString("book_title")
+        return HtmlUtils.createSlug(bookName).also { slugCache["${bookId}_$lang"] = it }
+    }
+
+    private fun chapterApiRequest(url: String, lang: String): Request {
+        val langCode = if (lang == "en") "en" else "tr"
+        return Request.Builder()
+            .url(url)
+            .get()
+            .header("User-Agent", UA)
+            .header("Referer", HtmlUtils.reelshortReferer(lang))
+            .header("Origin", "https://www.reelshort.com")
+            .header("Accept", "application/json")
+            .header("lang", langCode)
+            .build()
+    }
+
     private fun fetchChapterVideoUrl(
         bookId: String,
         chapterId: String,
+        serial: Int,
         lang: String,
         onError: (String) -> Unit
     ): String? {
@@ -171,15 +251,7 @@ class ReelShortClient {
             "https://www.reelshort.com/api/video/book/getChapterInfo?book_id=$bookId&chapter_id=$chapterId"
         )
         for (apiUrl in urls) {
-            val req = Request.Builder()
-                .url(apiUrl)
-                .get()
-                .header("User-Agent", UA)
-                .header("Referer", HtmlUtils.reelshortReferer(lang))
-                .header("Origin", "https://www.reelshort.com")
-                .header("Accept", "application/json")
-                .header("lang", langCode)
-                .build()
+            val req = chapterApiRequest(apiUrl, lang)
             val result = runCatching {
                 HttpClient.client.newCall(req).execute().use { resp ->
                     val body = resp.body?.string().orEmpty()
@@ -193,11 +265,24 @@ class ReelShortClient {
                         onError(json.optString("msg", "code $code"))
                         return@use null
                     }
-                    json.optJSONObject("data")?.optString("video_url")?.takeIf { it.isNotBlank() }
+                    val data = json.optJSONObject("data") ?: return@use null
+                    val returnedId = data.optString("chapter_id")
+                    if (returnedId.isNotBlank() && returnedId != chapterId) {
+                        onError("yanlis bolum ($returnedId)")
+                        return@use null
+                    }
+                    val returnedSerial = chapterSerial(
+                        JSONObject().apply { put("serial_number", data.opt("serial_number")) }
+                    )
+                    if (returnedSerial > 0 && returnedSerial != serial) {
+                        onError("yanlis bolum no ($returnedSerial)")
+                        return@use null
+                    }
+                    data.optString("video_url").takeIf { it.isNotBlank() }
                 }
             }.getOrNull()
             if (!result.isNullOrBlank()) {
-                Log.i(TAG, "getChapterInfo OK b=$bookId c=$chapterId")
+                Log.i(TAG, "getChapterInfo OK b=$bookId c=$chapterId s=$serial")
                 return result
             }
         }
@@ -206,12 +291,7 @@ class ReelShortClient {
 
     private fun fetchEpisodePageVideoUrl(bookId: String, serial: Int, chapterId: String, lang: String): String? {
         val prefix = HtmlUtils.langPrefix(lang)
-        val slug = slugCache["${bookId}_$lang"] ?: run {
-            val firstUrl = "https://www.reelshort.com$prefix/full-episodes/$bookId/1"
-            val bookName = HtmlUtils.fetchNextData(firstUrl, lang).getJSONObject("props").getJSONObject("pageProps")
-                .getJSONObject("data").optString("book_title")
-            HtmlUtils.createSlug(bookName).also { slugCache["${bookId}_$lang"] = it }
-        }
+        val slug = slugCache["${bookId}_$lang"] ?: bookSlug(bookId, lang)
         val episodeUrl =
             "https://www.reelshort.com$prefix/episodes/episode-$serial-$slug-$bookId-$chapterId"
         val epData = runCatching {

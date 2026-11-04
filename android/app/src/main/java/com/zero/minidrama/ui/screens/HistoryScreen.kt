@@ -86,7 +86,7 @@ fun HistoryScreen(
                     Spacer(Modifier.height(12.dp))
                     Text("Henuz izleme gecmisin yok", fontWeight = FontWeight.Bold)
                     Text(
-                        "Izledigin diziler burada gorunecek.",
+                        "Liste bos. APK yeniden kurulduysa eski kayitlar silinmis olabilir. Ayarlar'dan yedekten geri yuklemeyi dene.",
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 }

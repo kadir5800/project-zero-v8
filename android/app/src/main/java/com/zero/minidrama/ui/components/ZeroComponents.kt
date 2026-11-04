@@ -33,7 +33,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.material3.CircularProgressIndicator
+import coil.compose.SubcomposeAsyncImage
+import com.zero.minidrama.core.ImageLoading
 import com.zero.minidrama.data.BookResult
 import com.zero.minidrama.data.CategoryItem
 
@@ -135,21 +138,38 @@ fun CategoryChipRow(
 
 @Composable
 fun PosterCard(book: BookResult, onClick: (BookResult) -> Unit, modifier: Modifier = Modifier) {
+    val poster = ImageLoading.normalizePosterUrl(book.pic)
     Surface(
         modifier = modifier
-            .height(248.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .aspectRatio(0.72f)
+            .clip(RoundedCornerShape(14.dp))
             .clickable { onClick(book) },
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(14.dp),
         tonalElevation = 2.dp
     ) {
         Box(Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = book.pic,
-                contentDescription = book.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
+            if (poster.isNotBlank()) {
+                SubcomposeAsyncImage(
+                    model = poster,
+                    contentDescription = book.title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    loading = {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(28.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    },
+                    error = {
+                        PosterFallback(book.title)
+                    }
+                )
+            } else {
+                PosterFallback(book.title)
+            }
             Box(
                 Modifier
                     .fillMaxSize()
@@ -164,30 +184,54 @@ fun PosterCard(book: BookResult, onClick: (BookResult) -> Unit, modifier: Modifi
             Box(
                 Modifier
                     .align(Alignment.TopEnd)
-                    .padding(10.dp)
-                    .size(34.dp)
+                    .padding(6.dp)
+                    .size(28.dp)
                     .background(Color(0xCCFF3B5C), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(16.dp))
             }
-            Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
+            Column(Modifier.align(Alignment.BottomStart).padding(8.dp)) {
                 Text(
                     book.title,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge
                 )
                 if (book.chapterCount > 0) {
                     Text(
                         "${book.chapterCount} bolum",
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFFCCCCCC)
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PosterFallback(title: String) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(0xFF2A2A32), Color(0xFF121218))
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            title.take(24),
+            color = Color.White.copy(alpha = 0.85f),
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(8.dp),
+            style = MaterialTheme.typography.labelMedium
+        )
     }
 }
 

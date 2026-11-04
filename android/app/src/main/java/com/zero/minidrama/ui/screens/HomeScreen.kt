@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,6 +51,8 @@ import com.zero.minidrama.ui.components.CategoryChipRow
 import com.zero.minidrama.ui.components.PlatformChipRow
 import com.zero.minidrama.ui.components.PosterCard
 import com.zero.minidrama.ui.components.SectionTitle
+
+private const val BROWSE_COLUMNS = 3
 
 @Composable
 fun HomeScreen(
@@ -129,14 +133,14 @@ fun HomeScreen(
         }
 
         LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            columns = GridCells.Fixed(BROWSE_COLUMNS),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.weight(1f)
         ) {
             if (continueItems.isNotEmpty()) {
-                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) {
+                item(span = { GridItemSpan(BROWSE_COLUMNS) }) {
                     SectionTitle("Devam et")
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(continueItems, key = { "${it.bookId}_${it.serial}" }) { item ->
@@ -147,7 +151,7 @@ fun HomeScreen(
                     SectionTitle("Sonuclar")
                 }
             }
-            items(state.results, key = { it.bookId }) { book ->
+            itemsIndexed(state.results, key = { index, book -> "${book.bookId}_$index" }) { _, book ->
                 PosterCard(book, onBookClick)
             }
         }

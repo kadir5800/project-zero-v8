@@ -190,7 +190,11 @@ private fun EpisodeChip(ep: EpisodeDto, active: Boolean, onClick: (EpisodeDto) -
         color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
     ) {
         Box(Modifier.padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
-            Text("${ep.serial}", fontWeight = FontWeight.Bold, color = if (active) Color.White else MaterialTheme.colorScheme.onSurface)
+            Text(
+                if (ep.isLock) "${ep.serial}🔒" else "${ep.serial}",
+                fontWeight = FontWeight.Bold,
+                color = if (active) Color.White else MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }

@@ -28,3 +28,11 @@ Thumbs.db
 # Legacy (removed web stack)
 node_modules/
 .data/
+
+# Reverse-engineering / local probes (not for repo)
+tools/jadx-out/
+tools/libstupid.so
+reelshort_base.apk
+android/tools_*.js
+android/tools_*.py
+android/ch_*.js

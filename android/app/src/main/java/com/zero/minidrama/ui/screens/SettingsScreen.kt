@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -20,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.zero.minidrama.data.HistoryBackup
 import com.zero.minidrama.ui.components.PlatformChipRow
 
 @Composable
@@ -27,7 +31,8 @@ fun SettingsScreen(
     platform: String,
     lang: String,
     onPlatformChange: (String) -> Unit,
-    onLangChange: (String) -> Unit
+    onLangChange: (String) -> Unit,
+    onRestoreHistory: () -> Unit
 ) {
     Column(
         Modifier
@@ -52,6 +57,30 @@ fun SettingsScreen(
                     Text("Kaynak ve dil", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(12.dp))
                     PlatformChipRow(platform, lang, onPlatformChange, onLangChange)
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Izleme gecmisi", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Her izlemede otomatik yedek: ${HistoryBackup.publicBackupHint()}",
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = onRestoreHistory, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Restore, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Yedekten geri yukle")
+                    }
                 }
             }
 

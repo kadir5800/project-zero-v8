@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zero.minidrama.data.BookResult
+import com.zero.minidrama.data.HistoryBackup
 import com.zero.minidrama.ui.AppViewModel
 import com.zero.minidrama.ui.navigation.AppRoute
 import com.zero.minidrama.ui.screens.DetailScreen
@@ -117,6 +118,10 @@ private fun ZeroApp(vm: AppViewModel = viewModel()) {
         val detail = state.bookDetail ?: return
         val current = state.playPayload?.serial ?: return
         val next = detail.episodes.find { it.serial == current + 1 } ?: return
+        if (next.isLock) {
+            vm.reportPlayError("Sonraki bolum (${next.serial}) ReelShort kilidinde; sunucu video vermiyor.")
+            return
+        }
         vm.playEpisode(
             bookId = detail.bookId,
             bookName = detail.bookName,
@@ -240,7 +245,19 @@ private fun ZeroApp(vm: AppViewModel = viewModel()) {
                             platform = state.platform,
                             lang = state.lang,
                             onPlatformChange = vm::setPlatform,
-                            onLangChange = vm::setLang
+                            onLangChange = vm::setLang,
+                            onRestoreHistory = {
+                                vm.restoreHistoryFromBackup(force = true) { count ->
+                                    scope.launch {
+                                        val msg = if (count > 0) {
+                                            "$count dizi gecmise geri yuklendi"
+                                        } else {
+                                            "Yedek bulunamadi (${HistoryBackup.publicBackupHint()})"
+                                        }
+                                        snackbar.showSnackbar(msg)
+                                    }
+                                }
+                            }
                         )
                     }
                 }

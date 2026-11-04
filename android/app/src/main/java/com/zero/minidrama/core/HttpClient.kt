@@ -19,6 +19,7 @@ object HttpClient {
         )
         val ssl = SSLContext.getInstance("TLS").apply { init(null, trustAll, SecureRandom()) }
         OkHttpClient.Builder()
+            .cookieJar(ReelShortCookies)
             .sslSocketFactory(ssl.socketFactory, trustAll[0] as X509TrustManager)
             .hostnameVerifier { _, _ -> true }
             .connectTimeout(15, TimeUnit.SECONDS)

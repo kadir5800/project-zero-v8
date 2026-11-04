@@ -6,11 +6,20 @@ import com.zero.minidrama.core.DramaBoxClient
 import com.zero.minidrama.core.DramaWaveClient
 import com.zero.minidrama.core.NetShortClient
 import com.zero.minidrama.core.ReelShortClient
+import com.zero.minidrama.core.ImageLoading
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+
+private fun JSONObject.posterFromBook(): String = ImageLoading.normalizePosterUrl(
+    optString("book_pic")
+        .ifBlank { optString("pic") }
+        .ifBlank { optString("book_cover") }
+        .ifBlank { optString("cover") }
+        .ifBlank { optString("coverWap") }
+)
 
 class ZeroRepository(private val context: Context) {
     private val reelShort = ReelShortClient()
@@ -39,7 +48,7 @@ class ZeroRepository(private val context: Context) {
                         BookResult(
                             bookId = d.optString("shortPlayId"),
                             title = stripHl(d.optString("shortPlayName")),
-                            pic = d.optString("shortPlayCover"),
+                            pic = ImageLoading.normalizePosterUrl(d.optString("shortPlayCover")),
                             desc = stripHl(d.optString("shotIntroduce", d.optString("shortPlayDescription"))),
                             chapterCount = d.optInt("shortPlayEpisodeCount"),
                             bookNameEn = stripHl(d.optString("shortPlayNameEn"))
@@ -59,7 +68,9 @@ class ZeroRepository(private val context: Context) {
                         BookResult(
                             bookId = b.optString("bookId"),
                             title = b.optString("bookName"),
-                            pic = (b.optString("coverWap", b.optString("cover"))).split("?")[0],
+                            pic = ImageLoading.normalizePosterUrl(
+                                b.optString("coverWap", b.optString("cover")).split("?")[0]
+                            ),
                             desc = b.optString("introduction", b.optString("intro")),
                             chapterCount = b.optInt("totalChapterNum", b.optInt("chapterNum")),
                             firstChapterId = b.optString("chapterId", b.optString("firstEpId")),
@@ -96,7 +107,7 @@ class ZeroRepository(private val context: Context) {
                         BookResult(
                             bookId = b.optString("key", b.optString("id")),
                             title = b.optString("title", b.optString("name")),
-                            pic = b.optString("cover").split("?")[0],
+                            pic = ImageLoading.normalizePosterUrl(b.optString("cover").split("?")[0]),
                             desc = b.optString("desc", b.optString("description")),
                             chapterCount = b.optInt("episode_count"),
                             firstChapterId = firstEp?.optString("id").orEmpty(),
@@ -114,7 +125,7 @@ class ZeroRepository(private val context: Context) {
                         BookResult(
                             bookId = b.optString("book_id"),
                             title = b.optString("book_title"),
-                            pic = b.optString("book_pic"),
+                            pic = b.posterFromBook(),
                             desc = b.optString("special_desc", b.optString("share_text")),
                             chapterCount = b.optInt("chapter_count"),
                             firstChapterId = b.optString("first_chapter_id"),
@@ -209,7 +220,9 @@ class ZeroRepository(private val context: Context) {
                         episodes = jsonArrayToEpisodes(data.optJSONArray("episodes")) { e ->
                             EpisodeDto(
                                 serial = episodeSerial(e),
-                                chapterId = e.optString("chapter_id")
+                                chapterId = e.optString("chapter_id"),
+                                cover = ImageLoading.normalizePosterUrl(e.optString("cover")),
+                                isLock = e.optBoolean("isLock")
                             )
                         }
                     )
@@ -219,7 +232,14 @@ class ZeroRepository(private val context: Context) {
 
     suspend fun resolvePlayUrl(payload: PlayPayload): String = withContext(Dispatchers.IO) {
         when (payload.platform) {
-            "reelshort" -> reelShort.playUrl(context, payload.bookId, payload.serial, payload.chapterId, payload.lang)
+            "reelshort" -> reelShort.playUrl(
+                context,
+                payload.bookId,
+                payload.serial,
+                payload.chapterId,
+                payload.lang,
+                payload.isLock
+            )
             "netshort" -> withNetShort(payload.lang) {
                 netShort.episodeVideo(
                     payload.bookId,
