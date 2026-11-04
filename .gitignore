@@ -1,0 +1,30 @@
+# Android / Gradle
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/.kotlin/
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+
+# Secrets
+.env
+.env.*
+*.keystore
+*.jks
+
+# Legacy (removed web stack)
+node_modules/
+.data/
