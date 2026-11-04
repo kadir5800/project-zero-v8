@@ -14,6 +14,15 @@ import java.net.URLEncoder
 class ReelShortClient {
     private val slugCache = mutableMapOf<String, String>()
 
+    companion object {
+        private const val UA =
+            "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+        private val BROWSE_SEEDS = mapOf(
+            "tr" to listOf("aşk", "intikam", "ceo", "aile"),
+            "en" to listOf("love", "revenge", "ceo", "billionaire")
+        )
+    }
+
     data class CatalogPage(
         val books: List<JSONObject>,
         val totalPages: Int,
@@ -22,66 +31,40 @@ class ReelShortClient {
 
     fun search(q: String, page: Int, lang: String, categoryId: String = ""): CatalogPage {
         val prefix = HtmlUtils.langPrefix(lang)
-        if (q.isBlank()) return browse(lang, page, categoryId)
-        val url = "https://www.reelshort.com$prefix/search?keywords=${URLEncoder.encode(q, "UTF-8")}&page=$page"
-        val data = HtmlUtils.fetchNextData(url).getJSONObject("props").getJSONObject("pageProps")
+        val keyword = q.trim().ifBlank {
+            val seeds = BROWSE_SEEDS[lang] ?: BROWSE_SEEDS.getValue("en")
+            seeds.first()
+        }
+        val url = "https://www.reelshort.com$prefix/search?keywords=${URLEncoder.encode(keyword, "UTF-8")}&page=$page"
+        val data = HtmlUtils.fetchNextData(url, lang).getJSONObject("props").getJSONObject("pageProps")
         val books = data.optJSONArray("books") ?: org.json.JSONArray()
         val total = data.optInt("total", 0)
         val pageSize = data.optInt("pageSize", 10).coerceAtLeast(1)
-        val totalPages = ((total + pageSize - 1) / pageSize).coerceAtLeast(1)
+        val totalPages = data.optInt("totalPage").takeIf { it > 0 }
+            ?: ((total + pageSize - 1) / pageSize).coerceAtLeast(1)
         val list = buildList {
             for (i in 0 until books.length()) add(books.getJSONObject(i))
         }
-        return CatalogPage(list, totalPages)
+        val seeds = BROWSE_SEEDS[lang] ?: BROWSE_SEEDS.getValue("en")
+        val categories = listOf("" to if (lang == "tr") "Tümü" else "All") +
+            seeds.map { it to it.replaceFirstChar { c -> c.uppercase() } }
+        val filtered = if (categoryId.isBlank()) list else list.filter { b ->
+            val title = b.optString("book_title", b.optString("book_name"))
+            title.contains(categoryId, ignoreCase = true)
+        }
+        return CatalogPage(filtered, totalPages, categories)
     }
 
     fun browse(lang: String, page: Int, categoryId: String = ""): CatalogPage {
-        val prefix = HtmlUtils.langPrefix(lang)
-        val homeUrl = "https://www.reelshort.com${prefix.ifBlank { "/" }}"
-        val pageProps = HtmlUtils.fetchNextData(homeUrl).getJSONObject("props").getJSONObject("pageProps")
-        val hall = pageProps.optJSONObject("fallback")
-            ?.optJSONObject("/api/ms/hall/webInfo")
-            ?: JSONObject()
-        val shelves = hall.optJSONArray("bookShelfList") ?: org.json.JSONArray()
-        val categories = buildList {
-            add("" to if (lang == "tr") "Tümü" else "All")
-            for (i in 0 until shelves.length()) {
-                val shelf = shelves.getJSONObject(i)
-                val books = shelf.optJSONArray("books") ?: continue
-                if (books.length() == 0) continue
-                val id = shelf.optString("bs_id").ifBlank {
-                    shelf.optString("tab_id").ifBlank { shelf.optString("bookshelf_name") }
-                }
-                val name = shelf.optString("bookshelf_name").ifBlank { id }
-                if (id.isNotBlank()) add(id to name)
-            }
-        }
-        val merged = LinkedHashMap<String, JSONObject>()
-        for (i in 0 until shelves.length()) {
-            val shelf = shelves.getJSONObject(i)
-            val shelfId = shelf.optString("bs_id").ifBlank {
-                shelf.optString("tab_id").ifBlank { shelf.optString("bookshelf_name") }
-            }
-            if (categoryId.isNotBlank() && shelfId != categoryId) continue
-            val books = shelf.optJSONArray("books") ?: continue
-            for (j in 0 until books.length()) {
-                val book = books.getJSONObject(j)
-                val id = book.optString("book_id")
-                if (id.isNotBlank()) merged.putIfAbsent(id, book)
-            }
-        }
-        val all = merged.values.toList()
-        val pageSize = 20
-        val start = ((page - 1).coerceAtLeast(0)) * pageSize
-        val slice = all.drop(start).take(pageSize)
-        val totalPages = ((all.size + pageSize - 1) / pageSize).coerceAtLeast(1)
-        return CatalogPage(slice, totalPages, categories)
+        val seeds = BROWSE_SEEDS[lang] ?: BROWSE_SEEDS.getValue("en")
+        val keyword = categoryId.ifBlank { seeds.first() }
+        return search(keyword, page, lang, categoryId)
     }
 
     suspend fun bookDetail(bookId: String, lang: String): JSONObject = withContext(Dispatchers.IO) {
         val prefix = HtmlUtils.langPrefix(lang)
         val firstUrl = "https://www.reelshort.com$prefix/full-episodes/$bookId/1"
-        val data1 = HtmlUtils.fetchNextData(firstUrl).getJSONObject("props").getJSONObject("pageProps").getJSONObject("data")
+        val data1 = HtmlUtils.fetchNextData(firstUrl, lang).getJSONObject("props").getJSONObject("pageProps").getJSONObject("data")
         val totalChapters = data1.optInt("chapter_count")
         val bookName = data1.optString("book_title")
         val slug = HtmlUtils.createSlug(bookName)
@@ -91,7 +74,7 @@ class ReelShortClient {
             async {
                 val pageUrl = "https://www.reelshort.com$prefix/full-episodes/$bookId/$p"
                 runCatching {
-                    HtmlUtils.fetchNextData(pageUrl).getJSONObject("props").getJSONObject("pageProps")
+                    HtmlUtils.fetchNextData(pageUrl, lang).getJSONObject("props").getJSONObject("pageProps")
                         .getJSONObject("data").optJSONArray("chapter_list") ?: org.json.JSONArray()
                 }.getOrDefault(org.json.JSONArray())
             }
@@ -123,17 +106,9 @@ class ReelShortClient {
     }
 
     fun playUrl(context: Context, bookId: String, serial: Int, chapterId: String, lang: String): String {
-        val prefix = HtmlUtils.langPrefix(lang)
-        val slug = slugCache["${bookId}_$lang"] ?: run {
-            val firstUrl = "https://www.reelshort.com$prefix/full-episodes/$bookId/1"
-            val bookName = HtmlUtils.fetchNextData(firstUrl).getJSONObject("props").getJSONObject("pageProps")
-                .getJSONObject("data").optString("book_title")
-            HtmlUtils.createSlug(bookName).also { slugCache["${bookId}_$lang"] = it }
-        }
-        val episodeUrl = "https://www.reelshort.com$prefix/episodes/episode-$serial-${URLEncoder.encode(slug, "UTF-8")}-$bookId-$chapterId"
-        val epData = HtmlUtils.fetchNextData(episodeUrl).getJSONObject("props").getJSONObject("pageProps").getJSONObject("data")
-        val videoUrl = epData.optString("video_url")
-        if (videoUrl.isBlank()) throw IllegalStateException("Video URL bulunamadi")
+        val videoUrl = fetchChapterVideoUrl(bookId, chapterId, lang)
+            ?: fetchEpisodePageVideoUrl(bookId, serial, chapterId, lang)
+            ?: throw IllegalStateException("Video URL bulunamadi")
 
         val manifestUrl = transformVideoUrl(videoUrl)
         if (manifestUrl.endsWith(".m3u8")) {
@@ -143,6 +118,50 @@ class ReelShortClient {
             return Uri.fromFile(file).toString()
         }
         return manifestUrl
+    }
+
+    private fun fetchChapterVideoUrl(bookId: String, chapterId: String, lang: String): String? {
+        if (chapterId.isBlank()) return null
+        val query = buildString {
+            append("https://www.reelshort.com/api/video/book/getChapterInfo")
+            append("?book_id=").append(URLEncoder.encode(bookId, "UTF-8"))
+            append("&chapter_id=").append(URLEncoder.encode(chapterId, "UTF-8"))
+            append("&lang=").append(URLEncoder.encode(if (lang == "en") "en" else "tr", "UTF-8"))
+        }
+        val req = Request.Builder()
+            .url(query)
+            .get()
+            .header("User-Agent", UA)
+            .header("Referer", HtmlUtils.reelshortReferer(lang))
+            .header("Origin", "https://www.reelshort.com")
+            .header("Accept", "application/json")
+            .build()
+        return runCatching {
+            HttpClient.client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return null
+                val json = JSONObject(resp.body?.string().orEmpty())
+                if (json.optInt("code") != 0) return null
+                json.optJSONObject("data")?.optString("video_url")?.takeIf { it.isNotBlank() }
+            }
+        }.getOrNull()
+    }
+
+    private fun fetchEpisodePageVideoUrl(bookId: String, serial: Int, chapterId: String, lang: String): String? {
+        val prefix = HtmlUtils.langPrefix(lang)
+        val slug = slugCache["${bookId}_$lang"] ?: run {
+            val firstUrl = "https://www.reelshort.com$prefix/full-episodes/$bookId/1"
+            val bookName = HtmlUtils.fetchNextData(firstUrl, lang).getJSONObject("props").getJSONObject("pageProps")
+                .getJSONObject("data").optString("book_title")
+            HtmlUtils.createSlug(bookName).also { slugCache["${bookId}_$lang"] = it }
+        }
+        val episodeUrl =
+            "https://www.reelshort.com$prefix/episodes/episode-$serial-$slug-$bookId-$chapterId"
+        val epData = runCatching {
+            HtmlUtils.fetchNextData(episodeUrl, lang).getJSONObject("props").getJSONObject("pageProps")
+                .optJSONObject("data")
+        }.getOrNull() ?: return null
+        return epData.optString("video_url").takeIf { it.isNotBlank() }
+            ?: epData.optString("play_url").takeIf { it.isNotBlank() }
     }
 
     private fun transformVideoUrl(videoUrl: String): String {
@@ -156,7 +175,7 @@ class ReelShortClient {
     private fun fetchAndRewriteManifest(videoUrl: String): String {
         val req = Request.Builder()
             .url(videoUrl)
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36")
+            .header("User-Agent", UA)
             .header("Referer", "https://www.reelshort.com/")
             .header("Origin", "https://www.reelshort.com")
             .build()
