@@ -22,6 +22,11 @@ object HtmlUtils {
         }
     }
 
+    fun parseNextDataJson(html: String): JSONObject {
+        val match = nextDataRegex.find(html) ?: throw IllegalStateException("NEXT_DATA bulunamadi")
+        return JSONObject(match.groupValues[1])
+    }
+
     fun langPrefix(lang: String) = if (lang == "en") "" else "/tr"
 
     fun reelshortReferer(lang: String): String =

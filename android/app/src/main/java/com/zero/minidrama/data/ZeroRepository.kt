@@ -4,8 +4,10 @@ import android.content.Context
 import android.net.Uri
 import com.zero.minidrama.core.DramaBoxClient
 import com.zero.minidrama.core.DramaWaveClient
+import com.zero.minidrama.core.GoodShortClient
 import com.zero.minidrama.core.NetShortClient
 import com.zero.minidrama.core.ReelShortClient
+import com.zero.minidrama.core.StoryReelClient
 import com.zero.minidrama.core.ImageLoading
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,6 +28,9 @@ class ZeroRepository(private val context: Context) {
     private val dramaBox = DramaBoxClient()
     private val netShort = NetShortClient()
     private val dramaWave = DramaWaveClient(context)
+    private val freeReels = DramaWaveClient(context, DramaWaveClient.Brand.FREE_REELS)
+    private val goodShort = GoodShortClient(context)
+    private val storyReel = StoryReelClient(context)
 
     suspend fun search(
         q: String,
@@ -84,8 +89,9 @@ class ZeroRepository(private val context: Context) {
                     } else emptyList()
                     SearchResponse(results, totalPages, page, cats)
                 }
-                "dramawave" -> {
-                    val (books, totalPages) = dramaWave.search(q, page, lang)
+                "dramawave", "freereels" -> {
+                    val client = if (platform == "freereels") freeReels else dramaWave
+                    val (books, totalPages) = client.search(q, page, lang)
                     val filtered = if (categoryId.isBlank()) books else books.filter { b ->
                         val tags = b.optJSONArray("content_tags")
                         if (tags != null) {
@@ -118,6 +124,34 @@ class ZeroRepository(private val context: Context) {
                     val cats = listOf(CategoryItem("", if (lang == "tr") "Tümü" else "All")) +
                         tagSet.take(20).map { CategoryItem(it, it) }
                     SearchResponse(results, totalPages, page, cats)
+                }
+                "storyreel" -> {
+                    val (items, totalPages) = storyReel.search(q, page, lang)
+                    val results = items.map { d ->
+                        BookResult(
+                            bookId = d.optString("shortPlayId"),
+                            title = stripHl(d.optString("shortPlayName")),
+                            pic = ImageLoading.normalizePosterUrl(d.optString("shortPlayCover")),
+                            desc = stripHl(d.optString("shotIntroduce")),
+                            chapterCount = d.optInt("shortPlayEpisodeCount"),
+                            bookNameEn = stripHl(d.optString("shortPlayName"))
+                        )
+                    }
+                    SearchResponse(results, totalPages, page, emptyList())
+                }
+                "goodshort" -> {
+                    val (books, totalPages) = goodShort.search(q, page, lang)
+                    val results = books.map { b ->
+                        BookResult(
+                            bookId = b.optString("bookId"),
+                            title = b.optString("bookName"),
+                            pic = ImageLoading.normalizePosterUrl(b.optString("cover")),
+                            desc = b.optString("introduction"),
+                            chapterCount = b.optInt("chapterCount"),
+                            bookNameEn = b.optString("bookName")
+                        )
+                    }
+                    SearchResponse(results, totalPages, page, emptyList())
                 }
                 else -> {
                     val pageData = reelShort.search(q, page, lang, categoryId)
@@ -169,7 +203,8 @@ class ZeroRepository(private val context: Context) {
                     )
                 }
                 "dramabox" -> {
-                    val epId = firstEpId ?: throw IllegalStateException("DramaBox icin firstEpId gerekli")
+                    val epId = firstEpId?.takeIf { it.isNotBlank() }
+                        ?: dramaBox.resolveFirstChapterId(bookId, lang)
                     val data = dramaBox.bookDetail(bookId, epId, lang)
                     BookDetailResponse(
                         bookId = bookId,
@@ -188,8 +223,9 @@ class ZeroRepository(private val context: Context) {
                         }
                     )
                 }
-                "dramawave" -> {
-                    val data = dramaWave.bookDetail(bookId, lang)
+                "dramawave", "freereels" -> {
+                    val client = if (platform == "freereels") freeReels else dramaWave
+                    val data = client.bookDetail(bookId, lang)
                     BookDetailResponse(
                         bookId = bookId,
                         bookName = data.optString("bookName"),
@@ -203,6 +239,48 @@ class ZeroRepository(private val context: Context) {
                                 serial = e.optInt("serial"),
                                 chapterId = e.optString("chapter_id"),
                                 cover = e.optString("cover")
+                            )
+                        }.sortedBy { it.serial }
+                    )
+                }
+                "storyreel" -> {
+                    val data = storyReel.bookDetail(bookId, lang)
+                    BookDetailResponse(
+                        bookId = bookId,
+                        bookName = data.optString("bookName"),
+                        alias = data.optString("alias"),
+                        description = data.optString("description"),
+                        readCount = 0,
+                        collectCount = 0,
+                        tags = emptyList(),
+                        episodes = jsonArrayToEpisodes(data.optJSONArray("episodes")) { e ->
+                            EpisodeDto(
+                                serial = e.optInt("serial"),
+                                chapterId = e.optString("chapter_id"),
+                                cover = e.optString("cover"),
+                                isLock = e.optBoolean("isLock")
+                            )
+                        }.sortedBy { it.serial }
+                    )
+                }
+                "goodshort" -> {
+                    val data = goodShort.bookDetail(bookId, lang)
+                    BookDetailResponse(
+                        bookId = bookId,
+                        bookName = data.optString("bookName"),
+                        alias = data.optString("alias"),
+                        description = data.optString("description"),
+                        readCount = 0,
+                        collectCount = 0,
+                        tags = emptyList(),
+                        episodes = jsonArrayToEpisodes(data.optJSONArray("episodes")) { e ->
+                            val ch = e.optString("chapter_id")
+                            val node = e.optString("node_id", "0")
+                            EpisodeDto(
+                                serial = e.optInt("serial"),
+                                chapterId = "$ch|$node",
+                                cover = e.optString("cover"),
+                                isLock = e.optBoolean("isLock")
                             )
                         }.sortedBy { it.serial }
                     )
@@ -249,14 +327,27 @@ class ZeroRepository(private val context: Context) {
                     payload.isLock
                 )
             }
-            "dramabox" -> {
-                val cover = payload.cover ?: throw IllegalStateException("DramaBox cover eksik")
-                val m3u8 = dramaBox.generateM3u8(cover)
-                val file = File(context.cacheDir, "dramabox_${payload.bookId}_${payload.serial}.m3u8")
-                file.writeText(m3u8)
-                Uri.fromFile(file).toString()
-            }
+            "dramabox" -> dramaBox.playUrl(
+                context,
+                payload.bookId,
+                payload.chapterId,
+                payload.lang
+            )
             "dramawave" -> dramaWave.episodeVideo(payload.bookId, payload.chapterId, payload.lang)
+            "freereels" -> freeReels.episodeVideo(payload.bookId, payload.chapterId, payload.lang)
+            "storyreel" -> storyReel.episodeVideo(
+                payload.bookId,
+                payload.chapterId,
+                payload.serial,
+                payload.lang,
+                payload.isLock
+            )
+            "goodshort" -> {
+                val parts = payload.chapterId.split("|", limit = 2)
+                val chapterId = parts[0]
+                val nodeId = parts.getOrElse(1) { "0" }
+                goodShort.playUrl(payload.bookId, chapterId, nodeId, payload.lang)
+            }
             else -> throw IllegalStateException("Platform desteklenmiyor")
         }
     }

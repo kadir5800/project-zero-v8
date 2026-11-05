@@ -31,9 +31,17 @@ object VideoPlayback {
                 "Referer" to "https://www.netshort.com/",
                 "Origin" to "https://www.netshort.com"
             )
-            "dramawave" -> base + mapOf(
+            "dramawave", "freereels" -> base + mapOf(
                 "Referer" to "https://www.mydramawave.com/",
                 "Origin" to "https://www.mydramawave.com"
+            )
+            "goodshort" -> base + mapOf(
+                "Referer" to "https://www.goodshort.com/",
+                "Origin" to "https://www.goodshort.com"
+            )
+            "storyreel" -> base + mapOf(
+                "Referer" to "https://api.storyreel.app/",
+                "Origin" to "https://api.storyreel.app"
             )
             else -> base
         }

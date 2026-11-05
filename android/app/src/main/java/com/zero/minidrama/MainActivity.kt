@@ -118,10 +118,6 @@ private fun ZeroApp(vm: AppViewModel = viewModel()) {
         val detail = state.bookDetail ?: return
         val current = state.playPayload?.serial ?: return
         val next = detail.episodes.find { it.serial == current + 1 } ?: return
-        if (next.isLock) {
-            vm.reportPlayError("Sonraki bolum (${next.serial}) ReelShort kilidinde; sunucu video vermiyor.")
-            return
-        }
         vm.playEpisode(
             bookId = detail.bookId,
             bookName = detail.bookName,
@@ -130,6 +126,22 @@ private fun ZeroApp(vm: AppViewModel = viewModel()) {
             chapterId = next.chapterId,
             cover = next.cover,
             isLock = next.isLock
+        )
+    }
+
+    fun playPreviousEpisode() {
+        val detail = state.bookDetail ?: return
+        val current = state.playPayload?.serial ?: return
+        if (current <= 1) return
+        val prev = detail.episodes.find { it.serial == current - 1 } ?: return
+        vm.playEpisode(
+            bookId = detail.bookId,
+            bookName = detail.bookName,
+            pic = state.selectedBookPic,
+            serial = prev.serial,
+            chapterId = prev.chapterId,
+            cover = prev.cover,
+            isLock = prev.isLock
         )
     }
 
@@ -189,7 +201,8 @@ private fun ZeroApp(vm: AppViewModel = viewModel()) {
                         onBack = { navigateBack() },
                         onError = { msg -> vm.reportPlayError(msg) },
                         onEnded = { playNextEpisode() },
-                        onSwipeNext = { playNextEpisode() }
+                        onSwipeNext = { playNextEpisode() },
+                        onSwipePrevious = { playPreviousEpisode() }
                     )
                     AppRoute.Detail -> DetailScreen(
                         detail = state.bookDetail,

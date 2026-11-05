@@ -13,8 +13,16 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
 
-class DramaWaveClient(context: Context) {
-    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+class DramaWaveClient(
+    context: Context,
+    private val brand: Brand = Brand.DRAMAWAVE,
+) {
+    /** FreeReels UI uses DramaWave dm-api wire credentials (same catalog, no frv2 payload crypto). */
+    private val wireBrand = if (brand == Brand.FREE_REELS) Brand.DRAMAWAVE else brand
+    private val apiBase = wireBrand.apiBase
+    private val prefs = context.getSharedPreferences(brand.prefsName, Context.MODE_PRIVATE)
+    private val userAgent =
+        "Mozilla/5.0 (Linux; Android 12; Redmi Note 11) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36 ${brand.uaTag}/${brand.appVersion}"
     private val seriesCache = ConcurrentHashMap<String, JSONObject>()
     private val unlockedUrls = ConcurrentHashMap<String, String>()
 
@@ -78,7 +86,7 @@ class DramaWaveClient(context: Context) {
                         .apply()
                     Thread.sleep(minOf(4000L * (1 shl (attempt - 1)), 20000L))
                 }
-                val body = JSONObject().put("device_id", deviceId)
+                val body = buildLoginBody()
                 val resp = apiCall("POST", "/anonymous/login", body, lang, auth = false)
                 val data = resp.optJSONObject("data") ?: throw IllegalStateException("DramaWave login basarisiz")
                 oauthToken = data.optString("auth_key").takeIf { it.isNotBlank() }
@@ -528,19 +536,19 @@ class DramaWaveClient(context: Context) {
         throttle()
         val locale = langMap[lang] ?: langMap["en"]!!
         val builder = Request.Builder()
-            .url(BASE + path)
-            .header("User-Agent", UA)
+            .url(apiBase + path)
+            .header("User-Agent", userAgent)
             .header("Accept", "application/json")
             .header("device-id", deviceId)
             .header("device-country", locale.country)
             .header("device-language", "${locale.appLang}-${locale.country}")
-            .header("app-version", APP_VERSION)
+            .header("app-version", wireBrand.appVersion)
             .header("app-language", locale.appLang)
             .header("device", "android")
             .header("device-version", "31")
             .header("language", locale.appLang)
             .header("country", locale.country)
-            .header("app-name", APP_NAME)
+            .header("app-name", wireBrand.appName)
             .header("session-id", sessionId)
             .header("timezone", locale.timezone)
             .header("is-mainland", "false")
@@ -610,15 +618,34 @@ class DramaWaveClient(context: Context) {
         val timezone: String
     )
 
+    private fun buildLoginBody(): JSONObject = JSONObject().put("device_id", deviceId)
+
+    enum class Brand(
+        val appName: String,
+        val prefsName: String,
+        val uaTag: String,
+        val appVersion: String,
+        val apiBase: String,
+    ) {
+        DRAMAWAVE(
+            "com.dramawave.app",
+            "dramawave_client",
+            "DramaWave",
+            "1.9.10",
+            "https://api.mydramawave.com/dm-api",
+        ),
+        FREE_REELS(
+            "com.freereels.app",
+            "freereels_client",
+            "FreeReels",
+            "2.5.20",
+            "https://api.mydramawave.com/dm-api",
+        ),
+    }
+
     companion object {
-        private const val BASE = "https://api.mydramawave.com/dm-api"
-        private const val APP_VERSION = "1.9.10"
-        private const val APP_NAME = "com.dramawave.app"
         private const val SIGN_PREFIX = "8IAcbWyCsVhYv82S2eofRqK1DF3nNDAv&"
-        private const val UA =
-            "Mozilla/5.0 (Linux; Android 12; Redmi Note 11) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36 DramaWave/1.9.10"
         private const val ROTATE_COOLDOWN_MS = 45_000L
-        private const val PREFS = "dramawave_client"
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_SESSION_ID = "session_id"
         private const val KEY_TOKEN = "oauth_token"

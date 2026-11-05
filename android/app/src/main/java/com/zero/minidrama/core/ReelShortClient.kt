@@ -135,17 +135,17 @@ class ReelShortClient {
             ?: fetchEpisodePageVideoUrl(bookId, serial, resolvedChapterId, lang)
 
         if (videoUrl.isNullOrBlank()) {
+            val mobileUrl = runCatching {
+                mobileClient(context).playUrl(bookId, resolvedChapterId, lang)
+            }.onFailure { e ->
+                Log.w(TAG, "mobile play failed: ${e.message}")
+            }.getOrNull()
+            if (!mobileUrl.isNullOrBlank()) {
+                Log.i(TAG, "mobile API OK b=$bookId s=$serial")
+                return finalizeUrl(context, bookId, serial, mobileUrl)
+            }
             val locked = isLock || isChapterLockedOnServer(bookId, resolvedChapterId, lang)
             if (locked) {
-                val mobileUrl = runCatching {
-                    mobileClient(context).playUrl(bookId, resolvedChapterId, lang)
-                }.onFailure { e ->
-                    Log.w(TAG, "mobile play failed: ${e.message}")
-                }.getOrNull()
-                if (!mobileUrl.isNullOrBlank()) {
-                    Log.i(TAG, "mobile API OK b=$bookId s=$serial")
-                    return finalizeUrl(context, bookId, serial, mobileUrl)
-                }
                 val detail = ReelShortMobileClient.lastDiagnostic.ifBlank { "mobil API yanit vermedi" }
                 throw IllegalStateException(
                     "Bolum $serial ReelShort tarafinda kilitli; sunucu video adresi vermiyor. ($detail)"

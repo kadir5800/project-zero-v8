@@ -50,6 +50,7 @@ fun PlayerScreen(
     onBack: () -> Unit,
     onEnded: () -> Unit,
     onSwipeNext: () -> Unit = onEnded,
+    onSwipePrevious: () -> Unit = {},
     onError: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -89,11 +90,18 @@ fun PlayerScreen(
 
     val swipeModifier = Modifier.pointerInput(payload?.serial, payload?.chapterId) {
         detectVerticalDragGestures { _, dragAmount ->
-            if (dragAmount >= -60f) return@detectVerticalDragGestures
             val now = System.currentTimeMillis()
             if (now - swipeGate.get() < 900) return@detectVerticalDragGestures
-            swipeGate.set(now)
-            onSwipeNext()
+            when {
+                dragAmount < -60f -> {
+                    swipeGate.set(now)
+                    onSwipeNext()
+                }
+                dragAmount > 60f -> {
+                    swipeGate.set(now)
+                    onSwipePrevious()
+                }
+            }
         }
     }
 
@@ -176,7 +184,7 @@ fun PlayerScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        "Bolum ${it.serial} · Yukari kaydir: sonraki",
+                        "Bolum ${it.serial} · Yukari: sonraki · Asagi: onceki",
                         color = Color.White.copy(alpha = 0.75f),
                         style = MaterialTheme.typography.labelMedium
                     )

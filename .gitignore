@@ -30,6 +30,8 @@ node_modules/
 .data/
 
 # Reverse-engineering / local probes (not for repo)
+tools/
+android/dramabox_key.pem
 tools/jadx-out/
 tools/libstupid.so
 reelshort_base.apk

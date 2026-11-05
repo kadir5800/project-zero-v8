@@ -76,7 +76,10 @@ fun PlatformChipRow(
             "reelshort" to "ReelShort",
             "dramabox" to "DramaBox",
             "netshort" to "NetShort",
-            "dramawave" to "DramaWave"
+            "dramawave" to "DramaWave",
+            "freereels" to "FreeReels",
+            "goodshort" to "GoodShort",
+            "storyreel" to "StoryReel"
         ).forEach { (id, label) ->
             FilterChip(
                 selected = platform == id,
